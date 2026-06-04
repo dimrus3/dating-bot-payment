@@ -42,41 +42,51 @@
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
+        // 🔥 ИСПРАВЛЕНО: используем var вместо const и правильную инициализацию
+        var tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Получаем данные из initDataUnsafe (переданные ботом)
-        const data = JSON.parse(tg.initDataUnsafe || '{}');
-        const plan = data.plan || 'basic';
-        const amount = data.amount || 10;
-        const userId = data.user_id || 0;
+        // Читаем данные из URL параметров
+        var urlParams = new URLSearchParams(window.location.search);
+        var planParam = urlParams.get('plan');
+        var amountParam = urlParams.get('amount');
+        var userIdParam = urlParams.get('user_id');
+        
+        // Устанавливаем значения по умолчанию
+        var plan = planParam || 'basic';
+        var amount = amountParam || 10;
+        var userId = userIdParam || 0;
 
+        // Обновляем интерфейс
         document.getElementById('planName').innerText = plan === 'premium' ? 'Premium Безлимит' : 'Basic Тариф';
-        document.getElementById('planPrice').innerText = `$${amount}`;
+        document.getElementById('planPrice').innerText = '$' + amount;
 
-        async function createPayment() {
-            const btn = document.getElementById('payBtn');
-            const loader = document.getElementById('loader');
+        function createPayment() {
+            var btn = document.getElementById('payBtn');
+            var loader = document.getElementById('loader');
             
             btn.disabled = true;
             loader.style.display = 'block';
 
             try {
-                // 🔥 ОТПРАВЛЯЕМ ДАННЫЕ ПРЯМО БОТУ ЧЕРЕЗ TELEGRAM SDK
-                // Бот получит их в хендлере @dp.message(F.web_app_data)
+                // Отправляем данные боту через sendData
                 tg.sendData(JSON.stringify({
                     action: "create_payment",
                     plan: plan,
-                    user_id: userId,
-                    amount: amount
+                    user_id: parseInt(userId),
+                    amount: parseInt(amount)
                 }));
                 
-                // Показываем сообщение что данные отправлены
-                tg.showPopup({
-                    title: '✅ Запрос отправлен',
-                    message: 'Переходим к оплате...',
-                    buttons: [{type: 'ok'}]
-                });
+                // Показываем что данные отправлены
+                setTimeout(function() {
+                    tg.showPopup({
+                        title: '✅ Запрос отправлен',
+                        message: 'Бот создает платеж. Проверьте чат!',
+                        buttons: [{type: 'ok'}]
+                    }, function() {
+                        tg.close();
+                    });
+                }, 500);
                 
             } catch (error) {
                 console.error(error);
