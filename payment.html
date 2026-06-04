@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оплата подписки</title>
+    <!-- Подключаем Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #1c1c1e);
+            color: var(--tg-theme-text-color, #ffffff);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #2c2c2e);
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 320px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        h1 { font-size: 22px; margin-bottom: 8px; }
+        p { font-size: 15px; opacity: 0.8; margin-bottom: 20px; line-height: 1.4; }
+        .price { font-size: 32px; font-weight: bold; color: var(--tg-theme-button-color, #3390ec); margin-bottom: 24px; }
+        
+        /* Кнопка оплаты */
+        button {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 12px;
+            padding: 14px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .loader { display: none; margin-top: 15px; font-size: 14px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1 id="planName">Загрузка...</h1>
+        <p>Безопасная крипто-оплата через NOWPayments. Поддержка 300+ валют.</p>
+        <div class="price" id="planPrice">$0</div>
+        <button id="payBtn" onclick="startPayment()">💳 Оплатить сейчас</button>
+        <div class="loader" id="loader">⏳ Создаем платеж...</div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Раскрыть на весь экран
+
+        // Получаем данные из initDataUnsafe (переданные ботом)
+        const data = JSON.parse(tg.initDataUnsafe || '{}');
+        const plan = data.plan || 'basic';
+        const amount = data.amount || 10;
+        const userId = data.user_id || 0;
+
+        document.getElementById('planName').innerText = plan === 'premium' ? 'Premium Безлимит' : 'Basic Тариф';
+        document.getElementById('planPrice').innerText = `$${amount}`;
+
+        async function startPayment() {
+            const btn = document.getElementById('payBtn');
+            const loader = document.getElementById('loader');
+            
+            btn.disabled = true;
+            loader.style.display = 'block';
+
+            try {
+                // Отправляем запрос НАШЕМУ бэкенду (Python боту) для создания инвойса
+                // В реальном проекте здесь нужен прокси или отдельный API endpoint.
+                // Для простоты используем прямой вызов к нашему серверу (если бот запущен локально)
+                // Или используем заглушку для демонстрации логики закрытия окна
+                
+                // ⚠️ ВАЖНО: В продакшене замени этот URL на реальный адрес твоего Python-бота
+                // Например: http://localhost:8000/create-invoice или https://твой-домен.com/api/invoice
+                const response = await fetch(`http://localhost:8000/create-invoice?plan=${plan}&user_id=${userId}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) throw new Error('Ошибка сети');
+                
+                const result = await response.json();
+                
+                if (result.invoice_url) {
+                    // Открываем страницу оплаты NOWPayments внутри Web App
+                    tg.openLink(result.invoice_url);
+                    
+                    // Запускаем проверку статуса каждые 5 секунд
+                    checkStatus(result.payment_id);
+                } else {
+                    throw new Error(result.error || 'Не удалось создать платеж');
+                }
+            } catch (error) {
+                console.error(error);
+                tg.showAlert('Ошибка: ' + error.message);
+                btn.disabled = false;
+                loader.style.display = 'none';
+            }
+        }
+
+        async function checkStatus(paymentId) {
+            const interval = setInterval(async () => {
+                try {
+                    const resp = await fetch(`http://localhost:8000/check-status?id=${paymentId}`);
+                    const data = await resp.json();
+                    
+                    if (data.status === 'finished') {
+                        clearInterval(interval);
+                        tg.showPopup({
+                            title: '✅ Успешно!',
+                            message: 'Подписка активирована. Приятного общения!',
+                            buttons: [{type: 'ok'}]
+                        }, () => {
+                            tg.close(); // 🔥 АВТОМАТИЧЕСКИ ЗАКРЫВАЕТ ОКНО
+                        });
+                    } else if (['failed', 'refunded'].includes(data.status)) {
+                        clearInterval(interval);
+                        tg.showAlert('Платеж не прошел. Попробуйте снова.');
+                        document.getElementById('payBtn').disabled = false;
+                        document.getElementById('loader').style.display = 'none';
+                    }
+                } catch (e) { console.log('Checking...', e); }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
